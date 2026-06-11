@@ -85,8 +85,133 @@ function showTab(name,btn){document.querySelectorAll('.tab').forEach(t=>t.classL
 function groupTitle(m){ if(m.phase==='group') return 'Group '+m.group; return {R32:'Round of 32',R16:'Round of 16',QF:'Quarter-finals',SF:'Semi-finals','3RD':'Third-place play-off',FINAL:'🏆 Final'}[m.group] || m.group; }
 function renderSchedule(filter='all'){let arr=[...MATCHES]; if(filter==='group') arr=arr.filter(m=>m.phase==='group'); if(filter==='knockout') arr=arr.filter(m=>m.phase==='knockout'); if(filter==='germany') arr=arr.filter(m=>m.home==='Germany'||m.away==='Germany'); if(filter==='watchable') arr=arr.filter(m=>parseInt(m.time.split(':')[0])>=17 && parseInt(m.time.split(':')[0])<=22); const box=document.getElementById('schedule-list'); box.innerHTML=''; let last=''; arr.forEach(m=>{const title=groupTitle(m); if(title!==last){box.innerHTML+=`<div class="phase-label">${title}</div>`; last=title;} box.innerHTML+=`<div class="match-card"><div class="match-date">${m.date}<br>${m.time} CEST</div><div class="match-teams"><span>${m.hflag}</span><span class="team home">${m.home}</span><span class="score">${m.status==='done' ? `${m.hscore ?? '–'}-${m.ascore ?? '–'}` : m.status==='live' ? 'LIVE' : 'vs'}</span><span class="team away">${m.away}</span><span>${m.aflag}</span></div><div class="venue">${m.venue}</div></div>`;}); if(!arr.length) box.innerHTML='<div class="card note">No matches found.</div>';}
 function filterMatches(type,btn){document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');renderSchedule(type);}
-function renderGroups(){const grid=document.getElementById('groups-grid');grid.innerHTML='';Object.entries(GROUPS).forEach(([g,teams])=>{grid.innerHTML+=`<div class="group-card"><div class="group-head">Group ${g} <small>P W D L GF GA PTS</small></div><table><tbody>${teams.map((t,i)=>`<tr><td><span class="team-cell"><span>${t.flag}</span>${t.name}${i<2?' <span class="qual">●</span>':''}</span></td><td>${t.p}</td><td>${t.w}</td><td>${t.d}</td><td>${t.l}</td><td>${t.gf}</td><td>${t.ga}</td><td><b>${t.pts}</b></td></tr>`).join('')}</tbody></table></div>`;});}
-function renderPredictions(){const box=document.getElementById('pred-list');box.innerHTML='';MATCHES.slice(0,18).forEach(m=>{const p=predictions[m.id]||{};box.innerHTML+=`<div class="pred-match"><b>${m.hflag} ${m.home} vs ${m.away} ${m.aflag}</b><div class="note">${m.date} · ${m.time} CEST · ${m.venue}</div><div class="pred-row"><b style="color:var(--green)">Abhishek</b><input class="score-input" type="number" min="0" id="ab-h-${m.id}" value="${p.abhishek?.h??''}" placeholder="0">–<input class="score-input" type="number" min="0" id="ab-a-${m.id}" value="${p.abhishek?.a??''}" placeholder="0"></div><div class="pred-row"><b style="color:var(--orange)">Anirudh</b><input class="score-input" type="number" min="0" id="an-h-${m.id}" value="${p.anirudh?.h??''}" placeholder="0">–<input class="score-input" type="number" min="0" id="an-a-${m.id}" value="${p.anirudh?.a??''}" placeholder="0"><button class="save" onclick="savePred(${m.id},event)">Save picks</button></div></div>`;});}
+async function renderGroups() {
+  const grid = document.getElementById('groups-grid');
+  grid.innerHTML = '<div class="empty-state">Loading group standings...</div>';
+
+  try {
+    const res = await fetch('/api/worldcup?type=matches&season=2026');
+    const data = await res.json();
+
+    if (!data.matches || !data.matches.length) {
+      grid.innerHTML = '<div class="empty-state">No group data available yet.</div>';
+      return;
+    }
+
+    const groups = {};
+
+    data.matches.forEach(match => {
+      if (!match.group || !match.group.startsWith('GROUP_')) return;
+
+      const groupName = match.group.replace('GROUP_', 'Group ');
+      if (!groups[groupName]) groups[groupName] = {};
+
+      const home = match.homeTeam?.name;
+      const away = match.awayTeam?.name;
+
+      [home, away].forEach(team => {
+        if (!team) return;
+        if (!groups[groupName][team]) {
+          groups[groupName][team] = {
+            name: team,
+            p: 0,
+            w: 0,
+            d: 0,
+            l: 0,
+            gf: 0,
+            ga: 0,
+            gd: 0,
+            pts: 0
+          };
+        }
+      });
+
+      if (match.status !== 'FINISHED') return;
+
+      const homeScore = match.score?.fullTime?.home;
+      const awayScore = match.score?.fullTime?.away;
+
+      if (homeScore === null || awayScore === null) return;
+
+      const h = groups[groupName][home];
+      const a = groups[groupName][away];
+
+      h.p++;
+      a.p++;
+
+      h.gf += homeScore;
+      h.ga += awayScore;
+      h.gd = h.gf - h.ga;
+
+      a.gf += awayScore;
+      a.ga += homeScore;
+      a.gd = a.gf - a.ga;
+
+      if (homeScore > awayScore) {
+        h.w++;
+        a.l++;
+        h.pts += 3;
+      } else if (awayScore > homeScore) {
+        a.w++;
+        h.l++;
+        a.pts += 3;
+      } else {
+        h.d++;
+        a.d++;
+        h.pts += 1;
+        a.pts += 1;
+      }
+    });
+
+    grid.innerHTML = '';
+
+    Object.entries(groups).forEach(([groupName, teams]) => {
+      const sortedTeams = Object.values(teams).sort((a, b) => {
+        return b.pts - a.pts || b.gd - a.gd || b.gf - a.gf;
+      });
+
+      grid.innerHTML += `
+        <div class="group-card">
+          <div class="group-header">${groupName}</div>
+          <table class="group-table">
+            <thead>
+              <tr>
+                <th>Team</th>
+                <th>P</th>
+                <th>W</th>
+                <th>D</th>
+                <th>L</th>
+                <th>GF</th>
+                <th>GA</th>
+                <th>GD</th>
+                <th>Pts</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${sortedTeams.map(team => `
+                <tr>
+                  <td>${team.name}</td>
+                  <td>${team.p}</td>
+                  <td>${team.w}</td>
+                  <td>${team.d}</td>
+                  <td>${team.l}</td>
+                  <td>${team.gf}</td>
+                  <td>${team.ga}</td>
+                  <td>${team.gd}</td>
+                  <td class="pts">${team.pts}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+    });
+
+  } catch (error) {
+    grid.innerHTML = '<div class="empty-state">Could not load group standings.</div>';
+    console.error(error);
+  }
+}function renderPredictions(){const box=document.getElementById('pred-list');box.innerHTML='';MATCHES.slice(0,18).forEach(m=>{const p=predictions[m.id]||{};box.innerHTML+=`<div class="pred-match"><b>${m.hflag} ${m.home} vs ${m.away} ${m.aflag}</b><div class="note">${m.date} · ${m.time} CEST · ${m.venue}</div><div class="pred-row"><b style="color:var(--green)">Abhishek</b><input class="score-input" type="number" min="0" id="ab-h-${m.id}" value="${p.abhishek?.h??''}" placeholder="0">–<input class="score-input" type="number" min="0" id="ab-a-${m.id}" value="${p.abhishek?.a??''}" placeholder="0"></div><div class="pred-row"><b style="color:var(--orange)">Anirudh</b><input class="score-input" type="number" min="0" id="an-h-${m.id}" value="${p.anirudh?.h??''}" placeholder="0">–<input class="score-input" type="number" min="0" id="an-a-${m.id}" value="${p.anirudh?.a??''}" placeholder="0"><button class="save" onclick="savePred(${m.id},event)">Save picks</button></div></div>`;});}
 function savePred(id,e){const get=x=>document.getElementById(x)?.value;if(!predictions[id])predictions[id]={}; if(get(`ab-h-${id}`)!==''&&get(`ab-a-${id}`)!=='')predictions[id].abhishek={h:get(`ab-h-${id}`),a:get(`ab-a-${id}`)}; if(get(`an-h-${id}`)!==''&&get(`an-a-${id}`)!=='')predictions[id].anirudh={h:get(`an-h-${id}`),a:get(`an-a-${id}`)}; localStorage.setItem('aa_wc_preds',JSON.stringify(predictions)); e.target.textContent='Saved ✓'; setTimeout(()=>e.target.textContent='Save picks',1200);}
 function renderTeamHQ(){document.getElementById('teams-grid').innerHTML=TEAMS_DATA.map(t=>`<div class="team-tile" onclick="showFact('${t.name.replaceAll("'","\\'")}')"><div class="flag-big">${t.flag}</div><b>${t.name}</b><div class="note">Group ${t.group}</div></div>`).join('');}
 function showFact(name){const t=TEAMS_DATA.find(x=>x.name===name);document.getElementById('team-fact').innerHTML=`<b>${t.flag} ${t.name} · Group ${t.group}</b><br>${t.fact}`; window.scrollTo({top:0,behavior:'smooth'});}
