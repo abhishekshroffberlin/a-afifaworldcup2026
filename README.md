@@ -1,0 +1,1 @@
+# a-afifaworldcup2026
