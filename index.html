@@ -82,7 +82,7 @@ function showTab(name,btn){document.querySelectorAll('.tab').forEach(t=>t.classL
 function groupTitle(m){ if(m.phase==='group') return 'Group '+m.group; return {R32:'Round of 32',R16:'Round of 16',QF:'Quarter-finals',SF:'Semi-finals','3RD':'Third-place play-off',FINAL:'🏆 Final'}[m.group] || m.group; }
 function renderSchedule(filter='all'){let arr=[...MATCHES]; if(filter==='group') arr=arr.filter(m=>m.phase==='group'); if(filter==='knockout') arr=arr.filter(m=>m.phase==='knockout'); if(filter==='germany') arr=arr.filter(m=>m.home==='Germany'||m.away==='Germany'); if(filter==='watchable') arr=arr.filter(m=>parseInt(m.time.split(':')[0])>=17 && parseInt(m.time.split(':')[0])<=22); const box=document.getElementById('schedule-list'); box.innerHTML=''; let last=''; arr.forEach(m=>{const title=groupTitle(m); if(title!==last){box.innerHTML+=`<div class="phase-label">${title}</div>`; last=title;} box.innerHTML+=`<div class="match-card"><div class="match-date">${m.date}<br>${m.time} CEST</div><div class="match-teams"><span>${m.hflag}</span><span class="team home">${m.home}</span><span class="score">${m.status==='done' ? `${m.hscore ?? '–'}-${m.ascore ?? '–'}` : m.status==='live' ? 'LIVE' : 'vs'}</span><span class="team away">${m.away}</span><span>${m.aflag}</span></div><div class="venue">${m.venue}</div></div>`;}); if(!arr.length) box.innerHTML='<div class="card note">No matches found.</div>';}
 function filterMatches(type,btn){document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');renderSchedule(type);}
-function renderGroups(){const grid=document.getElementById('groups-grid');grid.innerHTML='';Object.entries(GROUPS).forEach(([g,teams])=>{grid.innerHTML+=`<div class="group-card"><div class="group-head">Group ${g} <small>P W D L GF GA PTS</small></div><table><tbody>${teams.map((t,i)=>`<tr><td><span class="team-cell"><span>${t.flag}</span>${t.name}${i<2?' <span class="qual">●</span>':''}</span></td><td>${t.p}</td><td>${t.w}</td><td>${t.d}</td><td>${t.l}</td><td>${t.gf}</td><td>${t.ga}</td><td><b>${t.pts}</b></td></tr>`).join('')}</tbody></table></div>`;});}
+function renderGroups(){const grid=document.getElementById('groups-grid');grid.innerHTML='';Object.entries(GROUPS).sort(([a],[b])=>a.localeCompare(b)).forEach(([g,teams])=>{grid.innerHTML+=`<div class="group-card"><div class="group-head">Group ${g} <small>P W D L GF GA PTS</small></div><table><tbody>${teams.map((t,i)=>`<tr><td><span class="team-cell"><span>${t.flag}</span>${t.name}${i<2?' <span class="qual">●</span>':''}</span></td><td>${t.p}</td><td>${t.w}</td><td>${t.d}</td><td>${t.l}</td><td>${t.gf}</td><td>${t.ga}</td><td><b>${t.pts}</b></td></tr>`).join('')}</tbody></table></div>`;});}
 function renderPredictions(){const box=document.getElementById('pred-list');box.innerHTML='';MATCHES.slice(0,18).forEach(m=>{const p=predictions[m.id]||{};box.innerHTML+=`<div class="pred-match"><b>${m.hflag} ${m.home} vs ${m.away} ${m.aflag}</b><div class="note">${m.date} · ${m.time} CEST · ${m.venue}</div><div class="pred-row"><b style="color:var(--green)">Abhishek</b><input class="score-input" type="number" min="0" id="ab-h-${m.id}" value="${p.abhishek?.h??''}" placeholder="0">–<input class="score-input" type="number" min="0" id="ab-a-${m.id}" value="${p.abhishek?.a??''}" placeholder="0"></div><div class="pred-row"><b style="color:var(--orange)">Anirudh</b><input class="score-input" type="number" min="0" id="an-h-${m.id}" value="${p.anirudh?.h??''}" placeholder="0">–<input class="score-input" type="number" min="0" id="an-a-${m.id}" value="${p.anirudh?.a??''}" placeholder="0"><button class="save" onclick="savePred(${m.id},event)">Save picks</button></div></div>`;});}
 function setPredictionSyncStatus(message){const el=document.getElementById('pred-sync-status'); if(el) el.textContent=message;}
 function localPredictionCache(){return JSON.parse(localStorage.getItem('aa_wc_preds') || '{}');}
@@ -184,6 +184,10 @@ function normalizeApiMatch(m){
     group,
     home,
     away,
+    homeId: m.homeTeam?.id ?? null,
+    awayId: m.awayTeam?.id ?? null,
+    homeTla: m.homeTeam?.tla ?? null,
+    awayTla: m.awayTeam?.tla ?? null,
     hflag: flagForTeam(home),
     aflag: flagForTeam(away),
     date: when.date,
@@ -197,9 +201,7 @@ function normalizeApiMatch(m){
 function normalizeApiGroups(data){
   if(!data?.standings?.length) return null;
   const groups = {};
-  data.standings.forEach(st => {
-    const key = (st.group || '').replace('GROUP_','') || st.stage || 'A';
-    groups[key] = st.table.map(row => ({
+  const tableToTeam = row => ({
       name: row.team?.shortName || row.team?.name || 'TBD',
       flag: flagForTeam(row.team?.shortName || row.team?.name),
       p: row.playedGames ?? 0,
@@ -209,9 +211,36 @@ function normalizeApiGroups(data){
       gf: row.goalsFor ?? 0,
       ga: row.goalsAgainst ?? 0,
       pts: row.points ?? 0
-    }));
   });
-  return groups;
+  const groupMap = new Map();
+  MATCHES.filter(m => m.phase === 'group' && m.group).forEach(m => {
+    [
+      { id:m.homeId, tla:m.homeTla, name:m.home },
+      { id:m.awayId, tla:m.awayTla, name:m.away }
+    ].forEach(team => {
+      if(team.id) groupMap.set(`id:${team.id}`, m.group);
+      if(team.tla) groupMap.set(`tla:${team.tla}`, m.group);
+      if(team.name) groupMap.set(`name:${team.name.toLowerCase()}`, m.group);
+    });
+  });
+  data.standings.filter(st => st.type === 'TOTAL').forEach(st => {
+    if(st.group){
+      const key = st.group.replace('GROUP_','');
+      groups[key] = st.table.map(tableToTeam);
+      return;
+    }
+    st.table.forEach(row => {
+      const team = row.team || {};
+      const key = groupMap.get(`id:${team.id}`) ||
+        groupMap.get(`tla:${team.tla}`) ||
+        groupMap.get(`name:${(team.shortName || '').toLowerCase()}`) ||
+        groupMap.get(`name:${(team.name || '').toLowerCase()}`);
+      if(!key) return;
+      if(!groups[key]) groups[key] = [];
+      if(!groups[key].some(t => t.name === (team.shortName || team.name))) groups[key].push(tableToTeam(row));
+    });
+  });
+  return Object.keys(groups).length ? groups : null;
 }
 async function loadLiveWorldCupData(){
   const statusBox = document.querySelector('.hero-grid .card .note');
