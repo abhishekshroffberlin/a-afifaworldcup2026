@@ -1,7 +1,7 @@
 const TABLE = 'aa_wc_predictions';
 
 function supabaseConfig() {
-  const url = process.env.SUPABASE_URL;
+  const url = (process.env.SUPABASE_URL || '').replace(/\/rest\/v1\/?$/, '');
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) {
     return null;
