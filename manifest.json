@@ -1,0 +1,25 @@
+{
+  "name": "Anirudh & Abhishek World Cup HQ",
+  "short_name": "World Cup HQ",
+  "description": "Family World Cup 2026 schedule, standings, predictions, quiz, and notes.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f7f8f2",
+  "theme_color": "#0f5c2a",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
