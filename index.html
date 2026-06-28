@@ -207,9 +207,78 @@ function flagForTeam(name){
   const fromTeamData = TEAMS_DATA.find(t => t.name === normalized || normalized.includes(t.name) || t.name.includes(normalized));
   if(fromTeamData) return fromTeamData.flag;
   const fallback = {
-    'USA':'🇺🇸','United States':'🇺🇸','USMNT':'🇺🇸','Mexico':'🇲🇽','Canada':'🇨🇦','Germany':'🇩🇪','Brazil':'🇧🇷','Argentina':'🇦🇷','France':'🇫🇷','Spain':'🇪🇸','England':'🏴','Portugal':'🇵🇹','Japan':'🇯🇵','Netherlands':'🇳🇱','Italy':'🇮🇹','Belgium':'🇧🇪','Uruguay':'🇺🇾','Switzerland':'🇨🇭','Croatia':'🇭🇷','Morocco':'🇲🇦','South Africa':'🇿🇦','Korea Republic':'🇰🇷','Republic of Korea':'🇰🇷','Czechia':'🇨🇿','Czech Republic':'🇨🇿','Qatar':'🇶🇦','Australia':'🇦🇺','Türkiye':'🇹🇷','Turkey':'🇹🇷','Ecuador':'🇪🇨','Ivory Coast':'🇨🇮','Côte d’Ivoire':'🇨🇮','Curaçao':'🇨🇼','Curacao':'🇨🇼','Sweden':'🇸🇪','Tunisia':'🇹🇳','Egypt':'🇪🇬','Iran':'🇮🇷','New Zealand':'🇳🇿','Saudi Arabia':'🇸🇦','Senegal':'🇸🇳','Norway':'🇳🇴','Iraq':'🇮🇶','Algeria':'🇩🇿','Austria':'🇦🇹','Jordan':'🇯🇴','Colombia':'🇨🇴','Ghana':'🇬🇭','Panama':'🇵🇦'
+    'USA':'🇺🇸','United States':'🇺🇸','USMNT':'🇺🇸','Mexico':'🇲🇽','Canada':'🇨🇦','Germany':'🇩🇪','Brazil':'🇧🇷','Argentina':'🇦🇷','France':'🇫🇷','Spain':'🇪🇸','England':'🏴','Portugal':'🇵🇹','Japan':'🇯🇵','Netherlands':'🇳🇱','Italy':'🇮🇹','Belgium':'🇧🇪','Uruguay':'🇺🇾','Switzerland':'🇨🇭','Croatia':'🇭🇷','Morocco':'🇲🇦','South Africa':'🇿🇦','Korea Republic':'🇰🇷','Republic of Korea':'🇰🇷','Czechia':'🇨🇿','Czech Republic':'🇨🇿','Qatar':'🇶🇦','Australia':'🇦🇺','Türkiye':'🇹🇷','Turkey':'🇹🇷','Ecuador':'🇪🇨','Ivory Coast':'🇨🇮','Côte d’Ivoire':'🇨🇮','Curaçao':'🇨🇼','Curacao':'🇨🇼','Sweden':'🇸🇪','Tunisia':'🇹🇳','Egypt':'🇪🇬','Iran':'🇮🇷','New Zealand':'🇳🇿','Saudi Arabia':'🇸🇦','Senegal':'🇸🇳','Norway':'🇳🇴','Iraq':'🇮🇶','Algeria':'🇩🇿','Austria':'🇦🇹','Jordan':'🇯🇴','Colombia':'🇨🇴','Ghana':'🇬🇭','Panama':'🇵🇦','Bosnia-H.':'🇧🇦','Bosnia-Herzegovina':'🇧🇦','Congo DR':'🇨🇩','DR Congo':'🇨🇩','Cape Verde':'🇨🇻','Cape Verde Islands':'🇨🇻'
   };
   return fallback[normalized] || '🏳️';
+}
+function parseRoundOf32Route(label){
+  const match = String(label || '').match(/(1[A-L]|2[A-L]|best 3rd)\s+vs\s+(1[A-L]|2[A-L]|best 3rd)/i);
+  return match ? [match[1],match[2]] : null;
+}
+function routeKey(m){return `${scheduleDateKey(m)}|${m.time}`;}
+const BUILT_IN_ROUND_OF_32_ROUTES = new Map(MATCHES.filter(m => m.phase === 'knockout' && m.group === 'R32').map(m => [routeKey(m), parseRoundOf32Route(m.away)]).filter(([,route]) => route));
+const THIRD_PLACE_ROUTE_COLUMNS = ['1A','1B','1D','1E','1G','1I','1K','1L'];
+const THIRD_PLACE_ROUTES = {
+  BDEFIJKL:['3E','3J','3B','3D','3I','3F','3L','3K'],
+  BDEFGIKL:['3E','3G','3B','3D','3I','3F','3L','3K'],
+  BDEFGIJL:['3E','3G','3B','3D','3J','3F','3L','3I'],
+  BDEFGIJK:['3E','3G','3B','3D','3J','3F','3I','3K'],
+  ABDEFGIL:['3E','3G','3B','3D','3A','3F','3L','3I'],
+  ABDEFGIK:['3E','3G','3B','3D','3A','3F','3I','3K'],
+  ABDEFGIJ:['3E','3G','3B','3D','3A','3F','3I','3J'],
+  ABCDEFGI:['3C','3G','3B','3D','3A','3F','3E','3I']
+};
+function sortGroupTeams(teams){
+  return [...teams].sort((a,b)=>
+    (b.pts-a.pts) ||
+    ((b.gf-b.ga)-(a.gf-a.ga)) ||
+    (b.gf-a.gf) ||
+    String(a.name).localeCompare(String(b.name))
+  );
+}
+function rankedGroupTeam(group,rank){
+  const teams = GROUPS[group];
+  if(!teams || teams.length < rank) return null;
+  return sortGroupTeams(teams)[rank-1] || null;
+}
+function thirdPlaceRouteMap(){
+  const groups = Object.keys(GROUPS).map(group => {
+    const team = rankedGroupTeam(group,3);
+    return team ? { group, team } : null;
+  }).filter(Boolean).sort((a,b)=>
+    (b.team.pts-a.team.pts) ||
+    ((b.team.gf-b.team.ga)-(a.team.gf-a.team.ga)) ||
+    (b.team.gf-a.team.gf) ||
+    String(a.team.name).localeCompare(String(b.team.name))
+  ).slice(0,8).map(item => item.group).sort().join('');
+  const row = THIRD_PLACE_ROUTES[groups];
+  if(!row) return {};
+  return Object.fromEntries(THIRD_PLACE_ROUTE_COLUMNS.map((slot,i) => [slot,row[i]]));
+}
+function resolveRouteSlot(slot){
+  const match = String(slot || '').match(/^([123])([A-L])$/);
+  if(!match) return null;
+  return rankedGroupTeam(match[2],Number(match[1]));
+}
+function applyResolvedRoundOf32Fixtures(){
+  const thirdRoutes = thirdPlaceRouteMap();
+  MATCHES = MATCHES.map(m => {
+    if(m.phase !== 'knockout' || m.group !== 'R32') return m;
+    const route = BUILT_IN_ROUND_OF_32_ROUTES.get(routeKey(m));
+    if(!route) return m;
+    let [homeSlot,awaySlot] = route;
+    if(awaySlot === 'best 3rd') awaySlot = thirdRoutes[homeSlot];
+    if(homeSlot === 'best 3rd') homeSlot = thirdRoutes[awaySlot];
+    const home = resolveRouteSlot(homeSlot);
+    const away = resolveRouteSlot(awaySlot);
+    return {
+      ...m,
+      home: home?.name || m.home,
+      away: away?.name || m.away,
+      hflag: home ? flagForTeam(home.name) : m.hflag,
+      aflag: away ? flagForTeam(away.name) : m.aflag
+    };
+  });
 }
 function normalizeApiMatch(m){
   const when = formatBerlinKickoff(m.utcDate);
@@ -292,16 +361,20 @@ async function loadLiveWorldCupData(){
     if(!matchesRes.ok) throw new Error('Match API returned ' + matchesRes.status);
     const matchesData = await matchesRes.json();
     const apiMatches = (matchesData.matches || []).map(normalizeApiMatch).sort((a,b)=>a.id-b.id);
-    if(apiMatches.length){
-      MATCHES = apiMatches;
-      renderSchedule();
-      renderPredictions();
-      updateNextMatchCard();
-    }
+    if(apiMatches.length) MATCHES = apiMatches;
     if(standingsRes.ok){
       const standingsData = await standingsRes.json();
       const apiGroups = normalizeApiGroups(standingsData);
-      if(apiGroups){ GROUPS = apiGroups; renderGroups(); }
+      if(apiGroups){
+        GROUPS = apiGroups;
+        applyResolvedRoundOf32Fixtures();
+        renderGroups();
+      }
+    }
+    if(apiMatches.length){
+      renderSchedule();
+      renderPredictions();
+      updateNextMatchCard();
     }
     if(statusBox) statusBox.innerHTML = 'Live mode is ON. Fixtures and scores are pulled from football-data.org via your Vercel API route. If the provider has not published 2026 data yet, the site keeps the built-in fallback schedule.';
   } catch(err) {

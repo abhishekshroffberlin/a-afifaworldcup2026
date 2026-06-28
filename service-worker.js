@@ -1,4 +1,4 @@
-const CACHE_NAME = 'aa-world-cup-hq-v2';
+const CACHE_NAME = 'aa-world-cup-hq-v3';
 const APP_SHELL = [
   '/',
   '/index.html',
